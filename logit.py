@@ -3,10 +3,9 @@ This is an implementation of a Logistic Regression model using Newton's Method t
 through a data set until convergence on model parameters.  The target data set is
 adult demographic information containing ~48k data points.  The goal is to predict whether
 the person has an annual income less than or greater than/equal to $50k per year.
-
 For simplification, I used only the features concerning age, final weight (accounts for
-race, age, and gender), years of education, and work hours per work.  I then used 80% of
-data for training and 20% for testing.  """
+race, age, and gender), years of education, and work hours per work.  I then used 70% of
+data for training and 30% for testing.  """
 
 #!/usr/bin/python
 import fileinput
@@ -19,8 +18,8 @@ import pandas as pd
 ''' Constants '''
 INPUT_FILE = 'adult.data'
 HEADER = ['age', 'workclass', 'fnlwgt', 'education', 'education-num', 'marital-status', 'occupation', 'relationship', 'race', 'sex', 'capital-gain', 'capital-loss', 'hours-per-week', 'native-country', 'income']
-TRAINING_DATA = [0,1,2,3,4,5,6,7]
-MIN_CHG = 0.00000001
+TRAINING_DATA = [0,1,3,4,6,7,9]
+MIN_CHG = 0.1
 
 ''' This function is for scrubbing data cells reported as "None" to be equal to "0". '''
 def scrub_none(string):
@@ -45,7 +44,7 @@ def init_df(df):
 		else:
 			income_group = 0
 		
-		# Add training (1) vs. testing (2) column
+		# Add training (1) vs. testing (0) column
 		if ((row[0] % 10) in TRAINING_DATA):
 			training = 1
 		else:
@@ -69,55 +68,96 @@ def init_theta(headers):
 
 	return new_headers
 
-''' Uses Euclidean distance to estimate the change in parameter values. '''
-def delta_dist(delta):
-	sum = 0
-	for each in delta:
-		sum += (each**2)
+''' initialize gradient as array of 0's '''
+def init_grad(len):
+	grad = []
 	
-	return math.sqrt(sum)
+	for i in range(len):
+		grad.append(0)
 
-''' Returns difference between two vectors '''
-def diff_iterables(i, j):
-	new = []
-	for a in range(len(i)-2):
-		new.append(i[a] - j[a])	
+	return grad
+
+''' initialize hessian as array of arrays of 0's '''
+def init_hess(len):
+	hess = []
 	
-	# adds two '5's to end of vector as substitute for 'income' and 'training'
-	new.append(5)
-	new.append(5)
-	return new
+	for i in range(len):
+		hess.append(init_grad(len))
+
+	return hess
 
 ''' Logistic function for calculating g(theta_transpose * x) '''
 def logistic_function(theta, x):
 	dot = np.dot(theta[:-2], x[:-2]) # do not compute dot product on income or training columns
-	return (1/(1+math.exp(-dot)))
+	
+	# To prevent math overflow errors
+	if dot < -100:
+		return 0
+	else:
+		return (1/(1+math.exp(-dot)))
 
-''' First Derivative of Logistic function for Newton's method '''
-def first_deriv(x , y, theta):
-	return (y[:-2] - logistic_function(theta[:-2], x[:-2]) * x[:-2])
+''' Construct gradient of logistic function '''
+def gradient(theta, df):
+	length = len(df.columns)
+	grad = init_grad(length - 2)
+	
+	for row in df.iterrows():  
+		row_index = row[0]
+		if(df.ix[row_index]['training'] == 1):
+			y = df.ix[row_index][length - 1] 
+			exp = y - logistic_function(theta, df.ix[row_index])
+			i = 0
+			while i < (length - 2):
+				x = df.ix[row_index][i]
+				grad[i] += (exp * x)
+				i += 1
+	return grad
 
-''' Second Derivative of Logistic function for Newton's method '''
-def second_deriv(x, y, theta):
-	return (-logistic_function(theta[:-2], x[:-2])) * (1 - logistic_function(theta[:-2], x[:-2])) * np.dot(x[:-2].values, x[:-2].values)
+''' Construct Hessian of logistic function '''
+def hessian(theta, df):
+	length = df.columns.size
+	hess = init_hess(length - 2)
+	
+	for row in df.iterrows():
+		row_index = row[0]
+		if(df.ix[row_index]['training'] == 1):
+			y = df.ix[row_index][length - 1]
+			hx = logistic_function(theta, df.ix[row_index])
+			exp = -1 * hx * (1 - hx)
+			i = 0
+			while i < length - 2:
+				xi = df.ix[row_index][i]
+				j = 0
+				while j < length - 2:
+					xj = df.ix[row_index][j]
+					hess[i][j] += (exp * xi * xj)
+					j += 1
+				i += 1
+	return hess
 
 ''' Iteratively calculates 
-Theta(t+1) = Theta(T) - (first_deriv(theta_transpose * x) / second_deriv(theta_transpose * x))
+Theta(t+1) = Theta(T) - (gradient(theta_transpose * x) * inverse(hessian(theta_transpose * x)))
 until convergence is reached.  At convergence, returns the final values of theta parameters. '''
 def newtons_method(df, theta):
 	length = len(df.index)
-	delta = [0.00001, 0.00001, 0.00001, 0.00001]
+	y_delta = 1
 	
-	while delta_dist(delta) > MIN_CHG:
-		theta = diff_iterables(theta, delta)
-	
-		index = random.randint(0, length-1)
-		if(df.ix[index]['training'] == 1):
-			y = df.ix[index]
-			x = df.ix[index]
-			delta = first_deriv(x, y, theta) / second_deriv(x, y, theta)
-		else:
-			pass
+	while y_delta > MIN_CHG:
+		g = gradient(theta, df)
+		h = hessian(theta, df)
+		h_inv = np.linalg.inv(h)
+		delta = np.dot(h_inv, g)
+		delta = np.append(delta, [0,0])
+		new_theta = theta + delta
+		
+		diff_sum = 0
+		for row in df.iterrows():
+			y = logistic_function(theta, row[1].values)
+			new_y = logistic_function(new_theta, row[1].values)
+			diff_sum += abs(new_y - y)
+		
+		y_delta = diff_sum / length # take average change in y as y_delta
+		theta += delta
 	
 	return theta
 
@@ -149,9 +189,9 @@ predictions = 0
 for row in scrubbed_df.iterrows():
 	if(row[1]['training'] == 0):
 		predictions += 1
-		if(row[1]['income'] == 1 and row[1]['prediction'] == 1):
+		if(row[1]['income'] == 1 and row[1]['prediction'] > 0.99):
 			correct += 1
-		elif(row[1]['income'] == 0 and row[1]['prediction'] < 1.0):
+		elif(row[1]['income'] == 0 and row[1]['prediction'] < 0.01):
 			correct += 1
 
 ''' Print Results '''	
