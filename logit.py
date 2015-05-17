@@ -71,7 +71,6 @@ def init_theta(headers):
 ''' initialize gradient as array of 0's '''
 def init_grad(len):
 	grad = []
-	
 	for i in range(len):
 		grad.append(0)
 
@@ -80,7 +79,6 @@ def init_grad(len):
 ''' initialize hessian as array of arrays of 0's '''
 def init_hess(len):
 	hess = []
-	
 	for i in range(len):
 		hess.append(init_grad(len))
 
@@ -101,16 +99,15 @@ def gradient(theta, df):
 	length = len(df.columns)
 	grad = init_grad(length - 2)
 	
-	for row in df.iterrows():  
+	for row in df[df['training'] == 1].iterrows():  
 		row_index = row[0]
-		if(df.ix[row_index]['training'] == 1):
-			y = df.ix[row_index][length - 1] 
-			exp = y - logistic_function(theta, df.ix[row_index])
-			i = 0
-			while i < (length - 2):
-				x = df.ix[row_index][i]
-				grad[i] += (exp * x)
-				i += 1
+		y = df.ix[row_index][length - 1] 
+		exp = y - logistic_function(theta, df.ix[row_index])
+		i = 0
+		while i < (length - 2):
+			x = df.ix[row_index][i]
+			grad[i] += (exp * x)
+			i += 1
 	return grad
 
 ''' Construct Hessian of logistic function '''
@@ -118,21 +115,20 @@ def hessian(theta, df):
 	length = df.columns.size
 	hess = init_hess(length - 2)
 	
-	for row in df.iterrows():
+	for row in df[df['training'] == 1].iterrows():
 		row_index = row[0]
-		if(df.ix[row_index]['training'] == 1):
-			y = df.ix[row_index][length - 1]
-			hx = logistic_function(theta, df.ix[row_index])
-			exp = -1 * hx * (1 - hx)
-			i = 0
-			while i < length - 2:
-				xi = df.ix[row_index][i]
-				j = 0
-				while j < length - 2:
-					xj = df.ix[row_index][j]
-					hess[i][j] += (exp * xi * xj)
-					j += 1
-				i += 1
+		y = df.ix[row_index][length - 1]
+		hx = logistic_function(theta, df.ix[row_index])
+		exp = -1 * hx * (1 - hx)
+		i = 0
+		while i < length - 2:
+			xi = df.ix[row_index][i]
+			j = 0
+			while j < length - 2:
+				xj = df.ix[row_index][j]
+				hess[i][j] += (exp * xi * xj)
+				j += 1
+			i += 1
 	return hess
 
 ''' Iteratively calculates 
@@ -186,13 +182,12 @@ scrubbed_df['prediction'] = prediction
 ''' Compute number of correct predictions '''
 correct = 0
 predictions = 0
-for row in scrubbed_df.iterrows():
-	if(row[1]['training'] == 0):
-		predictions += 1
-		if(row[1]['income'] == 1 and row[1]['prediction'] > 0.99):
-			correct += 1
-		elif(row[1]['income'] == 0 and row[1]['prediction'] < 0.01):
-			correct += 1
+for row in scrubbed_df[scrubbed_df['training'] == 0].iterrows():
+	predictions += 1
+	if(row[1]['income'] == 1 and row[1]['prediction'] > 0.99):
+		correct += 1
+	elif(row[1]['income'] == 0 and row[1]['prediction'] < 0.01):
+		correct += 1
 
 ''' Print Results '''	
 print "Number of correct predictions: " + str(correct)
